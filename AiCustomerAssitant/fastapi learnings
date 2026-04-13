@@ -1,0 +1,200 @@
+🚀 FastAPI Cheat Sheet (Practical + Examples)
+🧱 1. Basic Setup
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/")
+def home():
+    return {"message": "Hello World"}
+
+Run:
+
+uvicorn app:app --reload
+🌐 2. HTTP Methods
+GET
+@app.get("/users")
+def get_users():
+    return ["user1", "user2"]
+POST
+@app.post("/users")
+def create_user():
+    return {"message": "User created"}
+PUT
+@app.put("/users/{id}")
+def update_user(id: int):
+    return {"id": id, "status": "updated"}
+DELETE
+@app.delete("/users/{id}")
+def delete_user(id: int):
+    return {"id": id, "status": "deleted"}
+🔢 3. Path Parameters
+@app.get("/items/{item_id}")
+def get_item(item_id: int):
+    return {"item_id": item_id}
+
+👉 Auto validation: /items/abc → error
+
+❓ 4. Query Parameters
+@app.get("/search")
+def search(q: str, limit: int = 10):
+    return {"query": q, "limit": limit}
+
+Example:
+
+/search?q=phone&limit=5
+📦 5. Request Body (IMPORTANT)
+Without Model
+@app.post("/chat")
+def chat(request: dict):
+    return {"message": request["message"]}
+With Pydantic Model (BEST PRACTICE)
+from pydantic import BaseModel
+
+class ChatRequest(BaseModel):
+    message: str
+    user_id: int
+
+@app.post("/chat")
+def chat(req: ChatRequest):
+    return {"message": req.message}
+📤 6. Response Model
+class ChatResponse(BaseModel):
+    reply: str
+    intent: str
+
+@app.post("/chat", response_model=ChatResponse)
+def chat(req: ChatRequest):
+    return {
+        "reply": "Hello",
+        "intent": "greeting"
+    }
+⏱️ 7. Async vs Sync
+Sync
+@app.get("/sync")
+def sync_func():
+    return {"msg": "sync"}
+Async (better for APIs)
+@app.get("/async")
+async def async_func():
+    return {"msg": "async"}
+
+👉 Use async when calling APIs / DB
+
+🧠 8. Dependency Injection (VERY USEFUL)
+def common():
+    return {"token": "abc123"}
+
+@app.get("/secure")
+def secure(dep=Depends(common)):
+    return dep
+🔐 9. Headers
+from fastapi import Header
+
+@app.get("/headers")
+def read_headers(user_agent: str = Header()):
+    return {"User-Agent": user_agent}
+🍪 10. Cookies
+from fastapi import Cookie
+
+@app.get("/cookies")
+def read_cookie(session_id: str = Cookie(None)):
+    return {"session": session_id}
+📁 11. File Upload
+from fastapi import File, UploadFile
+
+@app.post("/upload")
+def upload(file: UploadFile = File(...)):
+    return {"filename": file.filename}
+📡 12. Calling External APIs
+import requests
+
+@app.get("/external")
+def call_api():
+    res = requests.get("https://api.github.com")
+    return res.json()
+🧠 13. Background Tasks
+from fastapi import BackgroundTasks
+
+def log_task(msg: str):
+    print(msg)
+
+@app.post("/task")
+def run_task(background_tasks: BackgroundTasks):
+    background_tasks.add_task(log_task, "Hello")
+    return {"status": "running"}
+⚠️ 14. Error Handling
+from fastapi import HTTPException
+
+@app.get("/error")
+def error():
+    raise HTTPException(status_code=404, detail="Not found")
+📊 15. Middleware
+@app.middleware("http")
+async def log_requests(request, call_next):
+    print("Request received")
+    response = await call_next(request)
+    return response
+🧾 16. Logging Example (USE THIS)
+import time
+
+@app.post("/process")
+def process(req: dict):
+    start = time.time()
+
+    response = "ok"
+
+    print({
+        "query": req.get("message"),
+        "time": time.time() - start
+    })
+
+    return {"reply": response}
+🧩 17. Modular Structure (IMPORTANT FOR YOUR PROJECT)
+
+Instead of one file:
+
+ai-service/
+ ├── app.py
+ ├── routes/
+ │    └── chat.py
+ ├── models/
+ ├── services/
+Example:
+routes/chat.py
+from fastapi import APIRouter
+
+router = APIRouter()
+
+@router.post("/process")
+def process():
+    return {"msg": "ok"}
+app.py
+from fastapi import FastAPI
+from routes.chat import router
+
+app = FastAPI()
+app.include_router(router)
+🧪 18. Testing (Swagger)
+
+Auto-generated docs:
+
+http://localhost:8000/docs
+🧠 19. Your Project-Specific Endpoint (IMPORTANT)
+
+This is what you’ll actually use:
+
+@app.post("/process")
+def process_query(req: ChatRequest):
+
+    query = req.message
+
+    intent = "faq"  # placeholder
+    reply = f"Answer for: {query}"
+
+    return {
+        "reply": reply,
+        "intent": intent,
+        "success": True,
+        "response_time": 0.2
+    }
