@@ -16,10 +16,12 @@ import {
 import SendIcon from '@mui/icons-material/Send';
 import ChatIcon from '@mui/icons-material/Chat';
 import DashboardIcon from '@mui/icons-material/Dashboard';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
 
 import { AuroraBackground } from './components/ui/aurora-background';
 import Auth from './Auth';
 import Dashboard from './Dashboard';
+import AdminChat from './AdminChat';
 import './index.css';
 
 function App() {
@@ -30,6 +32,33 @@ function App() {
   const [messages, setMessages] = useState([
     { role: 'ai', content: 'Submit your review and get AI insights.' }
   ]);
+
+  useEffect(() => {
+    if (currentUser) {
+      const fetchHistory = async () => {
+        try {
+          const token = localStorage.getItem("token");
+          const res = await fetch(`${BACKEND_URL}/reviews/user`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const history = [{ role: 'ai', content: 'Submit your review and get AI insights.' }];
+            data.forEach(review => {
+              history.push({ role: 'user', content: `Product ${review.productId}: ${review.reviewText}` });
+              if (review.aiResponse || review.summary) {
+                history.push({ role: 'ai', content: review.aiResponse || review.summary });
+              }
+            });
+            setMessages(history);
+          }
+        } catch (e) {
+          console.error("Failed to fetch history");
+        }
+      };
+      fetchHistory();
+    }
+  }, [currentUser]);
 
   const BACKEND_URL = 'http://localhost:8080';
   const [reviewText, setReviewText] = useState('');
@@ -89,7 +118,7 @@ function App() {
 
       setMessages(prev => [...prev, {
         role: 'ai',
-        content: data.summary 
+        content: data.aiResponse || data.summary 
       }]);
       setToastOpen(true);
 
@@ -111,12 +140,20 @@ function App() {
     <AuroraBackground>
       <Container maxWidth="md" sx={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Paper elevation={3} sx={{ width: '100%', height: '85vh', display: 'flex', flexDirection: 'column', borderRadius: 3, overflow: 'hidden' }}>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: '#f8fafc' }}>
-          <Tabs value={activeTab} onChange={(e, val) => setActiveTab(val)} centered variant="fullWidth">
-            <Tab icon={<ChatIcon fontSize="small"/>} iconPosition="start" label="AI Reviews" />
-            <Tab icon={<DashboardIcon fontSize="small"/>} iconPosition="start" label="Analytics Dashboard" />
-          </Tabs>
-        </Box>
+        {currentUser?.role === 'ADMIN' && (
+          <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: '#f8fafc' }}>
+            <Tabs value={activeTab} onChange={(e, val) => setActiveTab(val)} centered variant="fullWidth">
+              <Tab icon={<ChatIcon fontSize="small"/>} iconPosition="start" label="AI Reviews" />
+              <Tab icon={<DashboardIcon fontSize="small"/>} iconPosition="start" label="Analytics Dashboard" />
+              <Tab icon={<SmartToyIcon fontSize="small"/>} iconPosition="start" label="AI Assistant" />
+            </Tabs>
+          </Box>
+        )}
+        {currentUser?.role !== 'ADMIN' && (
+          <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', bgcolor: '#f8fafc', textAlign: 'center' }}>
+            <Typography variant="h6" fontWeight="bold">My Reviews</Typography>
+          </Box>
+        )}
 
         {activeTab === 0 && (
           <Box sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1, overflow: 'hidden', bgcolor: '#fff' }}>
@@ -188,8 +225,11 @@ function App() {
           </Box>
         )}
 
-        {activeTab === 1 && (
+        {currentUser?.role === 'ADMIN' && activeTab === 1 && (
           <Dashboard BACKEND_URL={BACKEND_URL} />
+        )}
+        {currentUser?.role === 'ADMIN' && activeTab === 2 && (
+          <AdminChat BACKEND_URL={BACKEND_URL} />
         )}
       </Paper>
 

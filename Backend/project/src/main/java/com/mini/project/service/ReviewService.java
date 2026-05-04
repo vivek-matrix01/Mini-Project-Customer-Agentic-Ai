@@ -51,7 +51,10 @@ public class ReviewService {
 
 
         try {
-            String url = "http://localhost:8000/analyze";
+            String url = System.getenv("AI_SERVICE_URL");
+            if (url == null || url.isEmpty()) {
+                url = "http://localhost:8000/analyze";
+            }
 
             Map<String, String> request = Map.of("review", review.getReviewText());
 
@@ -62,6 +65,9 @@ public class ReviewService {
             review.setSentiment(json.get("sentiment").asText());
             review.setSeverity(json.get("severity").asText());
             review.setSummary(json.get("summary").asText());
+            if (json.has("ai_response")) {
+                review.setAiResponse(json.get("ai_response").asText());
+            }
 
         } catch (Exception e) {
 
@@ -94,5 +100,9 @@ public class ReviewService {
         }
 
         return saved;
+    }
+
+    public java.util.List<Review> getReviewsByUser(Long userId) {
+        return reviewRepository.findByUserId(userId);
     }
 }

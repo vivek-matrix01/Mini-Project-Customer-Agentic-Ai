@@ -12,6 +12,9 @@ public class UserService {
     private UserRepository userRepository;
 
     public User register(User user) {
+        if (user.getRole() == null) {
+            user.setRole("USER");
+        }
         return userRepository.save(user);
     }
 

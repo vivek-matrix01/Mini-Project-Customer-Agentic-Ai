@@ -21,26 +21,34 @@ export default function Auth({ onLogin }) {
     e.preventDefault();
     
     try {
-      const res = await fetch("http://localhost:8080/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: email,
-          password: password
-        })
-      });
+      if (isLogin) {
+        const res = await fetch("http://localhost:8080/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password })
+        });
 
-      if (!res.ok) {
-        throw new Error("Authentication failed");
+        if (!res.ok) throw new Error("Authentication failed");
+
+        const data = await res.json();
+        localStorage.setItem("token", data.token);
+        
+        onLogin(data);
+      } else {
+        const res = await fetch("http://localhost:8080/user/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, email, password })
+        });
+
+        if (!res.ok) throw new Error("Registration failed");
+        
+        alert("Registration successful! Please sign in.");
+        setIsLogin(true);
       }
-
-      const token = await res.text();
-      localStorage.setItem("token", token);
-      
-      onLogin({ email });
     } catch (error) {
       console.error(error);
-      alert("Login failed. Please check your credentials.");
+      alert(isLogin ? "Login failed. Please check your credentials." : "Registration failed.");
     }
   };
 

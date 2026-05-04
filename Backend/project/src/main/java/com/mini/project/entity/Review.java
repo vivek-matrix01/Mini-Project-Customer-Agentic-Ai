@@ -32,6 +32,9 @@ public class Review {
     @Column(columnDefinition = "TEXT")
     private String summary;
 
+    @Column(columnDefinition = "TEXT")
+    private String aiResponse;
+
 
     @OneToMany(mappedBy = "review", cascade = CascadeType.ALL)
     private List<ReviewCategory> categories;

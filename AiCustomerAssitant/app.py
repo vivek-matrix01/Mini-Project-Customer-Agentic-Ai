@@ -1,15 +1,30 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import json
+from typing import Optional
+
+import os
 from langchain_ollama import ChatOllama
 
 app = FastAPI()
 
-llm = ChatOllama(model="mistral")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+llm = ChatOllama(model="mistral", base_url=ollama_base_url)
 
 class ReviewRequest(BaseModel):
     review: str
 
+class ChatRequest(BaseModel):
+    message: str
+    product_context: Optional[str] = None
 
 PROMPT = """
 Analyze the following product review and return STRICT JSON.
@@ -22,7 +37,8 @@ Return JSON:
   "categories": ["delivery", "product_quality", "packaging", "pricing", "service", "other"],
   "severity": "low | medium | high",
   "keywords": ["..."],
-  "summary": "one line summary"
+  "summary": "one line summary",
+  "ai_response": "A polite, personalized 1-2 sentence response addressed directly to the user (e.g., 'Thank you for your feedback! We are glad you liked...' or 'We are sorry to hear about your experience...')"
 }}
 """
 
@@ -32,14 +48,14 @@ import json
 
 def safe_parse(text):
     try:
-        # Step 1: extract JSON inside ```json ... ```
+
         code_block = re.search(r"```json(.*?)```", text, re.DOTALL)
 
         if code_block:
             json_str = code_block.group(1).strip()
             return json.loads(json_str)
 
-        # Step 2: fallback → extract first {...}
+
         match = re.search(r"\{.*\}", text, re.DOTALL)
 
         if match:
@@ -56,7 +72,8 @@ def safe_parse(text):
             "categories": ["other"],
             "severity": "low",
             "keywords": [],
-            "summary": "Parsing failed"
+            "summary": "Parsing failed",
+            "ai_response": "Thank you for your feedback. We are processing it."
         }
 
 @app.post("/analyze")
@@ -68,3 +85,10 @@ def analyze_review(req: ReviewRequest):
     parsed = safe_parse(response.content)
 
     return parsed
+
+@app.post("/chat")
+def admin_chat(req: ChatRequest):
+    context_info = f"\nHere are the analytics details for the product in question:\n{req.product_context}\n" if req.product_context else ""
+    prompt = f"You are an AI assistant for the Admin dashboard of an e-commerce platform.{context_info}Answer the following question or request specifically focusing on the product details provided if applicable: {req.message}"
+    response = llm.invoke(prompt)
+    return {"response": response.content}

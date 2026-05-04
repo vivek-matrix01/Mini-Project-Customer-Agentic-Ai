@@ -6,6 +6,9 @@ import com.mini.project.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import com.mini.project.dto.AuthResponse;
+import org.springframework.http.ResponseEntity;
+
 @CrossOrigin(origins = "*")
 @RestController
 @RequestMapping("/auth")
@@ -18,7 +21,7 @@ public class AuthController {
     private JwtComponent jwtUtil;
 
     @PostMapping("/login")
-    public String login(@RequestBody User user) {
+    public ResponseEntity<AuthResponse> login(@RequestBody User user) {
 
         User existingUser = userRepository.findByEmail(user.getEmail())
                 .orElseThrow(() -> new RuntimeException("User not found"));
@@ -27,6 +30,8 @@ public class AuthController {
             throw new RuntimeException("Invalid credentials");
         }
 
-        return jwtUtil.generateToken(existingUser.getEmail());
+        String token = jwtUtil.generateToken(existingUser.getEmail());
+        AuthResponse response = new AuthResponse(token, existingUser.getId(), existingUser.getEmail(), existingUser.getName(), existingUser.getRole());
+        return ResponseEntity.ok(response);
     }
 }
