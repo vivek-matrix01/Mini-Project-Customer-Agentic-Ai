@@ -1,20 +1,45 @@
 spring:
-  security:
-    user:
-      name: admin
-      password: secret123
   application:
-  name: project
+    name: nexus-ai-backend
+
   datasource:
-    url: jdbc:postgresql://localhost:5432/MiniProject
-    username: postgres
-    password: megha
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/MiniProject}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
 
   jpa:
     hibernate:
       ddl-auto: update
-
-    show-sql: true
+    show-sql: false        # set true locally for debugging, false in production
     properties:
-        hibernate:
-          format_sql: true
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+# ── JWT ──────────────────────────────────────────────────────────────────────
+jwt:
+  secret: ${JWT_SECRET:nexus-ai-default-dev-secret-change-in-production-32chars}
+  expiration-ms: 3600000   # 1 hour
+
+# ── AI Microservice URL ───────────────────────────────────────────────────────
+ai:
+  service:
+    url: ${AI_SERVICE_URL:http://localhost:8000/analyze}
+    chat-url: ${AI_CHAT_URL:http://localhost:8000/chat}
+
+# ── Swagger / OpenAPI ─────────────────────────────────────────────────────────
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+
+# ── Async thread pool ─────────────────────────────────────────────────────────
+spring.task.execution:
+  pool:
+    core-size: 4
+    max-size: 10
+    queue-capacity: 100
+  thread-name-prefix: nexus-async-

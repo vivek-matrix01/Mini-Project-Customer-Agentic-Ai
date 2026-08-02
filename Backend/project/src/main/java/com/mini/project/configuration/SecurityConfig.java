@@ -21,7 +21,10 @@ public class SecurityConfig {
                 .cors(e->e.configure(http))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/auth/**").permitAll()
+                        .requestMatchers("/user/register").permitAll()
                         .requestMatchers("/analytics/**").permitAll()
+                        // Swagger / OpenAPI — allow in dev (restrict in prod via env)
+                        .requestMatchers("/swagger-ui/**", "/api-docs/**", "/swagger-ui.html").permitAll()
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(session -> session

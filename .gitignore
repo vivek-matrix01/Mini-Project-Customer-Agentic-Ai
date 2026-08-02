@@ -1,0 +1,27 @@
+# ── Secrets (NEVER commit these) ──────────────────────────────
+.env
+*.env.local
+*.env.production
+
+# ── Build outputs ──────────────────────────────────────────────
+FrontEnd/dist/
+FrontEnd/node_modules/
+Backend/project/target/
+
+# ── IDE / OS ───────────────────────────────────────────────────
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# ── Python ────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+.python-version
+AiCustomerAssitant/.venv/
+AiCustomerAssitant/uv.lock
+
+# ── Logs ──────────────────────────────────────────────────────
+*.log

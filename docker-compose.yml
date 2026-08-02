@@ -1,43 +1,101 @@
 version: '3.8'
 
+# ============================================================
+# Nexus AI — Docker Compose (Production Ready)
+# Phase 4 Upgrades:
+#   - All secrets via .env file (no hardcoded passwords)
+#   - PostgreSQL runs as a container (no host DB dependency)
+#   - Health checks on all services
+#   - Restart policies for resilience
+#   - Named volumes for data persistence
+#   - Depends_on with condition: service_healthy
+# ============================================================
+
 services:
-  frontend:
-    build:
-      context: ./FrontEnd
-      dockerfile: Dockerfile
-    ports:
-      - "5173:80"
-    depends_on:
-      - backend
 
-  backend:
-    build:
-      context: ./Backend/project
-      dockerfile: Dockerfile
-    ports:
-      - "8080:8080"
+  # ── PostgreSQL Database ──────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
     environment:
-      # Connects to the host machine's PostgreSQL instance. 
-      # host.docker.internal works on Docker Desktop (Windows/Mac).
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5432/MiniProject
-      - SPRING_DATASOURCE_USERNAME=postgres
-      - SPRING_DATASOURCE_PASSWORD=megha
-      # The backend needs to know where the AI service is.
-      # Within the docker-compose network, we use the service name 'ai-service'.
-      - AI_SERVICE_URL=http://ai-service:8000/analyze
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    depends_on:
-      - ai-service
+      POSTGRES_DB:       ${POSTGRES_DB:-MiniProject}
+      POSTGRES_USER:     ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-MiniProject}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # ── Python AI Microservice ───────────────────────────────────
   ai-service:
     build:
       context: ./AiCustomerAssitant
       dockerfile: Dockerfile
+    restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
-      # Connects to the host machine's Ollama instance.
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      # Groq = primary (fastest free tier). Get key: https://console.groq.com
+      GROQ_API_KEY:    ${GROQ_API_KEY:-}
+      GROQ_MODEL:      ${GROQ_MODEL:-llama-3.3-70b-versatile}
+      # Gemini = secondary fallback. Get key: https://aistudio.google.com
+      GOOGLE_API_KEY:  ${GOOGLE_API_KEY:-}
+      # Ollama = local fallback (no key needed)
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL:    ${OLLAMA_MODEL:-mistral}
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ── Spring Boot Backend ──────────────────────────────────────
+  backend:
+    build:
+      context: ./Backend/project
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL:      jdbc:postgresql://postgres:5432/${POSTGRES_DB:-MiniProject}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      AI_SERVICE_URL:             http://ai-service:8000/analyze
+      AI_CHAT_URL:                http://ai-service:8000/chat
+      JWT_SECRET:                 ${JWT_SECRET:-nexus-dev-secret-change-me-in-production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ── React Frontend ───────────────────────────────────────────
+  frontend:
+    build:
+      context: ./FrontEnd
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_started
+
+volumes:
+  postgres_data:
+    driver: local
