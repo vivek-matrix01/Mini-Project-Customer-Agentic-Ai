@@ -10,7 +10,7 @@ import { useState } from 'react';
  *    This is the very FIRST thing an interviewer/recruiter sees; it must wow immediately.
  */
 
-const BACKEND_URL = 'http://localhost:8080';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8080';
 
 const EyeIcon = ({ open }) => open ? (
   <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
