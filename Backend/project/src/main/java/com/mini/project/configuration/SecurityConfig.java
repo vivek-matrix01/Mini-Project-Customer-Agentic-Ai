@@ -20,6 +20,7 @@ public class SecurityConfig {
         http
                 .cors(e->e.configure(http))
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/auth/**").permitAll()
                         .requestMatchers("/user/register").permitAll()
                         .requestMatchers("/analytics/**").permitAll()
