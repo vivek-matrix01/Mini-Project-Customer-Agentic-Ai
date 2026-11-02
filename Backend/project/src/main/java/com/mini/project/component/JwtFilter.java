@@ -26,6 +26,12 @@ public class JwtFilter extends OncePerRequestFilter {
     private UserRepository userRepository;
 
     @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        // Never intercept CORS preflight OPTIONS requests
+        return "OPTIONS".equalsIgnoreCase(request.getMethod());
+    }
+
+    @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain filterChain)
