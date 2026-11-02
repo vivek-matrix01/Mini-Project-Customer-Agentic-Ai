@@ -41,7 +41,7 @@ GROQ_API_KEY     = os.getenv("GROQ_API_KEY", "").strip()
 GOOGLE_API_KEY   = os.getenv("GOOGLE_API_KEY", "").strip()
 OLLAMA_BASE_URL  = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL     = os.getenv("OLLAMA_MODEL", "mistral")
-GROQ_PRIMARY_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
+GROQ_PRIMARY_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b").strip()
 
 # ── LLM Provider Factories ────────────────────────────────────────────────────
 def get_groq(model_name: str = None):
@@ -79,23 +79,23 @@ def build_provider_chain():
     """
     chain = []
 
-    # ── 1. Groq Active Models ──────────────────────────────────────────────────
+    # ── 1. Groq Active Models (Verified from your Groq Key) ────────────────────
     if GROQ_API_KEY:
         chain.append((f"groq ({GROQ_PRIMARY_MODEL})", lambda: get_groq(GROQ_PRIMARY_MODEL)))
-        if GROQ_PRIMARY_MODEL != "llama-3.1-8b-instant":
-            chain.append(("groq (llama-3.1-8b-instant)", lambda: get_groq("llama-3.1-8b-instant")))
+        if GROQ_PRIMARY_MODEL != "openai/gpt-oss-20b":
+            chain.append(("groq (openai/gpt-oss-20b)", lambda: get_groq("openai/gpt-oss-20b")))
+        if GROQ_PRIMARY_MODEL != "qwen/qwen3.8-27b":
+            chain.append(("groq (qwen/qwen3.8-27b)", lambda: get_groq("qwen/qwen3.8-27b")))
         if GROQ_PRIMARY_MODEL != "llama-3.3-70b-versatile":
             chain.append(("groq (llama-3.3-70b-versatile)", lambda: get_groq("llama-3.3-70b-versatile")))
-        chain.append(("groq (gemma2-9b-it)", lambda: get_groq("gemma2-9b-it")))
+        if GROQ_PRIMARY_MODEL != "llama-3.1-8b-instant":
+            chain.append(("groq (llama-3.1-8b-instant)", lambda: get_groq("llama-3.1-8b-instant")))
 
     # ── 2. Google Gemini Active Models ─────────────────────────────────────────
     if GOOGLE_API_KEY:
-        chain.append(("gemini-2.5-flash", lambda: get_gemini("gemini-2.5-flash")))
-        chain.append(("gemini-2.0-flash", lambda: get_gemini("gemini-2.0-flash")))
-        chain.append(("gemini-2.5-flash-lite", lambda: get_gemini("gemini-2.5-flash-lite")))
-        chain.append(("gemini-2.0-flash-lite", lambda: get_gemini("gemini-2.0-flash-lite")))
         chain.append(("gemini-flash-latest", lambda: get_gemini("gemini-flash-latest")))
-        chain.append(("gemini-1.5-flash-latest", lambda: get_gemini("gemini-1.5-flash-latest")))
+        chain.append(("gemini-3.8-flash", lambda: get_gemini("gemini-3.8-flash")))
+        chain.append(("gemini-3.5-flash-lite", lambda: get_gemini("gemini-3.5-flash-lite")))
         chain.append(("gemini-pro-latest", lambda: get_gemini("gemini-pro-latest")))
 
     # ── 3. Ollama (Local only) ─────────────────────────────────────────────────
@@ -153,19 +153,45 @@ Review:
 
 Return ONLY the JSON object. No other text."""
 
+# ── Text Content Extractor (Handles string or LangChain block lists) ───────────
+def extract_text_content(content) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict) and "text" in item:
+                parts.append(str(item["text"]))
+            elif hasattr(item, "text"):
+                parts.append(str(getattr(item, "text")))
+            else:
+                parts.append(str(item))
+        return "\n".join(parts)
+    return str(content)
+
 # ── Robust JSON Parser (3-stage) ──────────────────────────────────────────────
-def parse_analysis_response(text: str) -> dict:
+def parse_analysis_response(raw) -> dict:
+    if isinstance(raw, dict):
+        return raw
+
+    text = extract_text_content(raw)
+
+    # Stage 1: direct parse
     try:
         return json.loads(text.strip())
     except Exception:
         pass
 
+    # Stage 2: strip markdown code fences
     try:
         stripped = re.sub(r"```(?:json)?", "", text, flags=re.IGNORECASE).strip(" `\n")
         return json.loads(stripped)
     except Exception:
         pass
 
+    # Stage 3: regex extract first { ... } block
     try:
         match = re.search(r"\{.*\}", text, re.DOTALL)
         if match:
@@ -173,7 +199,7 @@ def parse_analysis_response(text: str) -> dict:
     except Exception:
         pass
 
-    log.warning("All parsing strategies failed. Raw: %s", text[:300])
+    log.warning("All parsing strategies failed. Raw: %s", str(text)[:300])
     return {
         "sentiment":   "neutral",
         "categories":  ["other"],
@@ -194,7 +220,7 @@ async def call_llm_with_fallback(messages: list) -> str:
             llm = factory()
             response = llm.invoke(messages)
             log.info("Provider '%s' succeeded", name)
-            return response.content
+            return extract_text_content(response.content)
         except Exception as e:
             log.warning("Provider '%s' failed: %s", name, str(e))
             last_error = e
