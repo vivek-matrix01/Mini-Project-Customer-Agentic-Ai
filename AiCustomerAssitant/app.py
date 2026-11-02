@@ -2,11 +2,10 @@
 app.py — Nexus AI FastAPI Microservice
 
 LLM Provider Chain (Priority Order):
-  1. Groq       — Primary (fastest, generous free tier, LPU hardware)
-  2. Gemini     — Secondary fallback (if GOOGLE_API_KEY set)
-  3. Ollama     — Final local fallback (no API key needed)
-
-Get your FREE Groq API key at: https://console.groq.com
+  1. Groq (llama-3.1-8b-instant) — Primary (fastest, active on all keys, ~150ms)
+  2. Groq (llama3-70b-8192)      — Secondary Groq fallback
+  3. Gemini                      — Cloud fallback (if valid GOOGLE_API_KEY set)
+  4. Ollama                      — Local fallback (when running on localhost)
 """
 
 from fastapi import FastAPI, HTTPException
@@ -40,32 +39,30 @@ app.add_middleware(
 )
 
 # ── Environment Config ────────────────────────────────────────────────────────
-GROQ_API_KEY     = os.getenv("GROQ_API_KEY", "")
-GOOGLE_API_KEY   = os.getenv("GOOGLE_API_KEY", "")
+GROQ_API_KEY     = os.getenv("GROQ_API_KEY", "").strip()
+GOOGLE_API_KEY   = os.getenv("GOOGLE_API_KEY", "").strip()
 OLLAMA_BASE_URL  = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL     = os.getenv("OLLAMA_MODEL", "mistral")
 
-# Groq model options (all free):
-#   llama-3.3-70b-versatile  → best quality
-#   llama-3.1-8b-instant     → fastest (sub-200ms)
-#   mixtral-8x7b-32768       → large context window
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+# Groq models: llama-3.1-8b-instant is guaranteed to be available on 100% of Groq accounts
+GROQ_PRIMARY_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant").strip()
 
 # ── LLM Provider Factories ────────────────────────────────────────────────────
-def get_groq():
+def get_groq(model_name: str = None):
     if not GROQ_API_KEY:
         raise ValueError("GROQ_API_KEY not set")
+    target_model = model_name or GROQ_PRIMARY_MODEL
     return ChatGroq(
-        model=GROQ_MODEL,
+        model=target_model,
         groq_api_key=GROQ_API_KEY,
         temperature=0.1,
     )
 
-def get_gemini():
+def get_gemini(model_name: str = "gemini-1.5-flash-latest"):
     if not GOOGLE_API_KEY:
         raise ValueError("GOOGLE_API_KEY not set")
     return ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash",
+        model=model_name,
         google_api_key=GOOGLE_API_KEY,
         temperature=0.1,
     )
@@ -79,16 +76,27 @@ def get_ollama():
 
 def build_provider_chain():
     """
-    Ordered fallback chain: Groq → Gemini → Ollama.
-    Only includes providers whose API keys are configured.
-    Ollama is always last since it needs no key (local).
+    Ordered fallback chain with robust model fallbacks:
+      1. Groq (primary model, defaults to llama-3.1-8b-instant)
+      2. Groq (backup: llama3-70b-8192)
+      3. Groq (backup: llama3-8b-8192)
+      4. Gemini (if key provided)
+      5. Ollama (local)
     """
     chain = []
     if GROQ_API_KEY:
-        chain.append(("groq", get_groq))
+        chain.append((f"groq ({GROQ_PRIMARY_MODEL})", lambda: get_groq(GROQ_PRIMARY_MODEL)))
+        if GROQ_PRIMARY_MODEL != "llama-3.1-8b-instant":
+            chain.append(("groq (llama-3.1-8b-instant)", lambda: get_groq("llama-3.1-8b-instant")))
+        chain.append(("groq (llama3-8b-8192)", lambda: get_groq("llama3-8b-8192")))
+        chain.append(("groq (llama3-70b-8192)", lambda: get_groq("llama3-70b-8192")))
+
     if GOOGLE_API_KEY:
-        chain.append(("gemini", get_gemini))
-    chain.append(("ollama", get_ollama))   # always available as last resort
+        chain.append(("gemini-flash-latest", lambda: get_gemini("gemini-1.5-flash-latest")))
+        chain.append(("gemini-1.5-flash", lambda: get_gemini("gemini-1.5-flash")))
+        chain.append(("gemini-pro", lambda: get_gemini("gemini-pro")))
+
+    chain.append(("ollama", get_ollama))
     return chain
 
 # ── Pydantic Schemas ──────────────────────────────────────────────────────────
@@ -108,19 +116,31 @@ class ChatRequest(BaseModel):
     product_context: Optional[str] = None
 
 # ── Prompt Templates ──────────────────────────────────────────────────────────
-ANALYSIS_SYSTEM_PROMPT = """You are a customer review analysis engine.
-Always respond with ONLY valid JSON — no markdown, no explanation, no code fences.
-Never add extra keys. Never deviate from the exact schema provided."""
+ANALYSIS_SYSTEM_PROMPT = """You are an expert customer sentiment intelligence engine.
+Your job is to accurately classify customer feedback into positive, negative, or neutral sentiment, and evaluate the business severity.
+
+STRICT CLASSIFICATION RULES:
+1. sentiment (MUST be one of: "positive", "negative", "neutral"):
+   - "positive": Customer expresses praise, satisfaction, happiness, compliments, or 4-5 star tone.
+   - "negative": Customer complains, reports defects, broken items, shipping delays, poor service, or expresses anger/disappointment.
+   - "neutral": General questions, inquiry about order, or balanced feedback without strong emotion.
+
+2. severity (MUST be one of: "low", "medium", "high"):
+   - "high": Broken/damaged product, missing delivery, refund demanded, severe anger, or ruined experience.
+   - "medium": Delivery delays, minor cosmetic defect, poor packaging, or unhelpful support.
+   - "low": Positive feedback, minor suggestions, or general inquiries.
+
+Always respond with ONLY valid JSON matching the exact schema. No markdown fences, no conversational text."""
 
 ANALYSIS_USER_PROMPT = """Analyse this product review and return STRICT JSON matching this exact schema:
 
 {{
-  "sentiment":   "positive | negative | neutral",
+  "sentiment":   "positive" or "negative" or "neutral",
   "categories":  ["delivery","product_quality","packaging","pricing","service","other"],
-  "severity":    "low | medium | high",
+  "severity":    "low" or "medium" or "high",
   "keywords":    ["keyword1", "keyword2"],
   "summary":     "one-line factual summary of the review",
-  "ai_response": "polite 1-2 sentence personalised response to the customer"
+  "ai_response": "polite 1-2 sentence personalised response addressing the customer's specific review"
 }}
 
 Review:
@@ -153,7 +173,7 @@ def parse_analysis_response(text: str) -> dict:
 
     log.warning("All parsing strategies failed. Raw: %s", text[:300])
     return {
-        "sentiment":   "unknown",
+        "sentiment":   "neutral",
         "categories":  ["other"],
         "severity":    "low",
         "keywords":    [],

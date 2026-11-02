@@ -42,7 +42,7 @@ def get_llm():
 
     if groq_key:
         return ChatGroq(
-            model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+            model=os.getenv("GROQ_MODEL", "llama-3.1-8b-instant"),
             groq_api_key=groq_key,
             temperature=0,  # deterministic for tool-calling
         )
