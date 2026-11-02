@@ -1,11 +1,9 @@
 """
 app.py — Nexus AI FastAPI Microservice
 
-LLM Provider Chain (Priority Order):
-  1. Groq (llama-3.1-8b-instant) — Primary (fastest, active on all keys, ~150ms)
-  2. Groq (llama3-70b-8192)      — Secondary Groq fallback
-  3. Gemini                      — Cloud fallback (if valid GOOGLE_API_KEY set)
-  4. Ollama                      — Local fallback (when running on localhost)
+LLM Provider Chain with Verified Active Production Models
+  - Groq: llama-3.3-70b-versatile, llama-3.1-8b-instant, gemma2-9b-it
+  - Google Gemini: gemini-2.5-flash, gemini-2.0-flash, gemini-2.5-flash-lite, gemini-2.0-flash-lite, gemini-flash-latest
 """
 
 from fastapi import FastAPI, HTTPException
@@ -27,7 +25,7 @@ log = logging.getLogger(__name__)
 app = FastAPI(
     title="Nexus AI — Customer Intelligence API",
     description="LLM-powered review analysis and admin chat service",
-    version="2.1.0",
+    version="2.3.0",
 )
 
 app.add_middleware(
@@ -43,9 +41,7 @@ GROQ_API_KEY     = os.getenv("GROQ_API_KEY", "").strip()
 GOOGLE_API_KEY   = os.getenv("GOOGLE_API_KEY", "").strip()
 OLLAMA_BASE_URL  = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL     = os.getenv("OLLAMA_MODEL", "mistral")
-
-# Groq models: llama-3.1-8b-instant is guaranteed to be available on 100% of Groq accounts
-GROQ_PRIMARY_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant").strip()
+GROQ_PRIMARY_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
 
 # ── LLM Provider Factories ────────────────────────────────────────────────────
 def get_groq(model_name: str = None):
@@ -58,7 +54,7 @@ def get_groq(model_name: str = None):
         temperature=0.1,
     )
 
-def get_gemini(model_name: str = "gemini-1.5-flash-latest"):
+def get_gemini(model_name: str = "gemini-2.5-flash"):
     if not GOOGLE_API_KEY:
         raise ValueError("GOOGLE_API_KEY not set")
     return ChatGoogleGenerativeAI(
@@ -76,27 +72,36 @@ def get_ollama():
 
 def build_provider_chain():
     """
-    Ordered fallback chain with robust model fallbacks:
-      1. Groq (primary model, defaults to llama-3.1-8b-instant)
-      2. Groq (backup: llama3-70b-8192)
-      3. Groq (backup: llama3-8b-8192)
-      4. Gemini (if key provided)
-      5. Ollama (local)
+    Active Verified Model Chain:
+      1. Groq: llama-3.3-70b-versatile, llama-3.1-8b-instant
+      2. Gemini: gemini-2.5-flash, gemini-2.5-flash-lite, gemini-flash-latest, gemini-1.5-flash-latest, gemini-pro-latest
+      3. Ollama: local fallback
     """
     chain = []
+
+    # ── 1. Groq Active Models ──────────────────────────────────────────────────
     if GROQ_API_KEY:
         chain.append((f"groq ({GROQ_PRIMARY_MODEL})", lambda: get_groq(GROQ_PRIMARY_MODEL)))
         if GROQ_PRIMARY_MODEL != "llama-3.1-8b-instant":
             chain.append(("groq (llama-3.1-8b-instant)", lambda: get_groq("llama-3.1-8b-instant")))
-        chain.append(("groq (llama3-8b-8192)", lambda: get_groq("llama3-8b-8192")))
-        chain.append(("groq (llama3-70b-8192)", lambda: get_groq("llama3-70b-8192")))
+        if GROQ_PRIMARY_MODEL != "llama-3.3-70b-versatile":
+            chain.append(("groq (llama-3.3-70b-versatile)", lambda: get_groq("llama-3.3-70b-versatile")))
+        chain.append(("groq (gemma2-9b-it)", lambda: get_groq("gemma2-9b-it")))
 
+    # ── 2. Google Gemini Active Models ─────────────────────────────────────────
     if GOOGLE_API_KEY:
-        chain.append(("gemini-flash-latest", lambda: get_gemini("gemini-1.5-flash-latest")))
-        chain.append(("gemini-1.5-flash", lambda: get_gemini("gemini-1.5-flash")))
-        chain.append(("gemini-pro", lambda: get_gemini("gemini-pro")))
+        chain.append(("gemini-2.5-flash", lambda: get_gemini("gemini-2.5-flash")))
+        chain.append(("gemini-2.0-flash", lambda: get_gemini("gemini-2.0-flash")))
+        chain.append(("gemini-2.5-flash-lite", lambda: get_gemini("gemini-2.5-flash-lite")))
+        chain.append(("gemini-2.0-flash-lite", lambda: get_gemini("gemini-2.0-flash-lite")))
+        chain.append(("gemini-flash-latest", lambda: get_gemini("gemini-flash-latest")))
+        chain.append(("gemini-1.5-flash-latest", lambda: get_gemini("gemini-1.5-flash-latest")))
+        chain.append(("gemini-pro-latest", lambda: get_gemini("gemini-pro-latest")))
 
-    chain.append(("ollama", get_ollama))
+    # ── 3. Ollama (Local only) ─────────────────────────────────────────────────
+    if "localhost" in OLLAMA_BASE_URL or "127.0.0.1" in OLLAMA_BASE_URL:
+        chain.append(("ollama", get_ollama))
+
     return chain
 
 # ── Pydantic Schemas ──────────────────────────────────────────────────────────
@@ -150,20 +155,17 @@ Return ONLY the JSON object. No other text."""
 
 # ── Robust JSON Parser (3-stage) ──────────────────────────────────────────────
 def parse_analysis_response(text: str) -> dict:
-    # Stage 1: direct parse
     try:
         return json.loads(text.strip())
     except Exception:
         pass
 
-    # Stage 2: strip markdown code fences
     try:
         stripped = re.sub(r"```(?:json)?", "", text, flags=re.IGNORECASE).strip(" `\n")
         return json.loads(stripped)
     except Exception:
         pass
 
-    # Stage 3: regex extract first { ... } block
     try:
         match = re.search(r"\{.*\}", text, re.DOTALL)
         if match:
@@ -213,7 +215,6 @@ async def health():
         "primary":   chain[0][0] if chain else "none",
         "groq":      "configured" if GROQ_API_KEY   else "not configured",
         "gemini":    "configured" if GOOGLE_API_KEY  else "not configured",
-        "ollama":    OLLAMA_BASE_URL,
     }
 
 @app.post("/analyze", response_model=AnalysisResult)

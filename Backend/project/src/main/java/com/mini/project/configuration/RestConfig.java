@@ -18,7 +18,7 @@ public class RestConfig {
         // Universal Spring HTTP factory: 10s connect & 15s read timeouts
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(10000);
-        factory.setReadTimeout(15000);
+        factory.setReadTimeout(30000); // 30 seconds
         return new RestTemplate(factory);
     }
 

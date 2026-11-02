@@ -66,8 +66,30 @@ public class ReviewService {
             String response = restTemplate.postForObject(aiServiceUrl, request, String.class);
             JsonNode json   = objectMapper.readTree(response);
 
-            review.setSentiment(json.path("sentiment").asText("neutral").trim().toLowerCase());
-            review.setSeverity (json.path("severity").asText("low").trim().toLowerCase());
+            // Robust sentiment extraction & normalization
+            String rawSentiment = json.path("sentiment").asText("neutral").trim().toLowerCase();
+            String sentiment;
+            if (rawSentiment.contains("pos")) {
+                sentiment = "positive";
+            } else if (rawSentiment.contains("neg")) {
+                sentiment = "negative";
+            } else {
+                sentiment = "neutral";
+            }
+            review.setSentiment(sentiment);
+
+            // Robust severity extraction & normalization
+            String rawSeverity = json.path("severity").asText("low").trim().toLowerCase();
+            String severity;
+            if (rawSeverity.contains("high")) {
+                severity = "high";
+            } else if (rawSeverity.contains("med")) {
+                severity = "medium";
+            } else {
+                severity = "low";
+            }
+            review.setSeverity(severity);
+
             review.setSummary  (json.path("summary").asText("Review processed successfully"));
             review.setAiResponse(json.path("ai_response").asText("Thank you for your feedback! Our support team has logged your review."));
 
@@ -94,10 +116,10 @@ public class ReviewService {
             log.error("AI service call failed or timed out ({}): {}. Falling back to default response.", aiServiceUrl, e.getMessage());
 
             // Graceful fallback: Still save the review so data is never lost!
-            review.setSentiment("NEUTRAL");
-            review.setSeverity("LOW");
-            review.setSummary("Review logged");
-            review.setAiResponse("Thank you for your feedback! Our customer care team is reviewing your comments.");
+            review.setSentiment("neutral");
+            review.setSeverity("low");
+            review.setSummary("AI service unavailable: review logged");
+            review.setAiResponse("Thank you for your feedback! (Note: AI service is currently reconnecting).");
 
             return reviewRepository.save(review);
         }
