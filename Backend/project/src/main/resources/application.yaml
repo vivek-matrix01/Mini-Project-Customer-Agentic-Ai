@@ -1,3 +1,6 @@
+server:
+  port: ${PORT:8080}
+
 spring:
   application:
     name: nexus-ai-backend
@@ -11,35 +14,36 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: false        # set true locally for debugging, false in production
-    properties:
-      hibernate:
-        format_sql: true
-        dialect: org.hibernate.dialect.PostgreSQLDialect
+    open-in-view: false
+    show-sql: false
 
-# ── JWT ──────────────────────────────────────────────────────────────────────
+  task:
+    execution:
+      pool:
+        core-size: 4
+        max-size: 10
+        queue-capacity: 100
+      thread-name-prefix: nexus-async-
+
+# ── JWT Security ─────────────────────────────────────────────
 jwt:
   secret: ${JWT_SECRET:nexus-ai-default-dev-secret-change-in-production-32chars}
-  expiration-ms: 3600000   # 1 hour
+  expiration-ms: 3600000
 
-# ── AI Microservice URL ───────────────────────────────────────────────────────
+# ── AI Microservice Endpoints ────────────────────────────────
 ai:
   service:
     url: ${AI_SERVICE_URL:http://localhost:8000/analyze}
     chat-url: ${AI_CHAT_URL:http://localhost:8000/chat}
 
-# ── Swagger / OpenAPI ─────────────────────────────────────────────────────────
+# ── CORS Allowed Origins (Optional extra origins) ─────────────
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:}
+
+# ── Swagger / OpenAPI Documentation ──────────────────────────
 springdoc:
   api-docs:
     path: /api-docs
   swagger-ui:
     path: /swagger-ui.html
     enabled: true
-
-# ── Async thread pool ─────────────────────────────────────────────────────────
-spring.task.execution:
-  pool:
-    core-size: 4
-    max-size: 10
-    queue-capacity: 100
-  thread-name-prefix: nexus-async-
