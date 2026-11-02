@@ -5,18 +5,14 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
-
 import java.util.Map;
-@CrossOrigin(origins = "*")
+
 @RestController
 @RequestMapping("/analytics")
 @RequiredArgsConstructor
 public class AnalyticsController {
 
     private final JdbcTemplate jdbcTemplate;
-
-
-
 
     @GetMapping("/{productId}")
     public Map<String, Object> getAllAnalytics(@PathVariable Long productId) {
@@ -59,5 +55,4 @@ public class AnalyticsController {
 
         return result;
     }
-
 }

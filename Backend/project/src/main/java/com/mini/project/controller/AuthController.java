@@ -9,7 +9,6 @@ import org.springframework.web.bind.annotation.*;
 import com.mini.project.dto.AuthResponse;
 import org.springframework.http.ResponseEntity;
 
-@CrossOrigin(origins = "*")
 @RestController
 @RequestMapping("/auth")
 public class AuthController {
