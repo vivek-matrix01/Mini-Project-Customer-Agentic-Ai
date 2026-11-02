@@ -69,17 +69,24 @@ export default function AdminChat({ BACKEND_URL }) {
         } catch { /* silent */ }
       }
 
-      const res = await fetch(`${import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:8000'}/chat`, {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${BACKEND_URL}/admin/chat`, {
         method:  'POST',
-        headers: { 'Content-Type':'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body:    JSON.stringify({ message: userMessage, product_context: productContext }),
       });
 
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || errData.response || 'Failed to communicate with AI Assistant');
+      }
       const data = await res.json();
       setMessages(prev => [...prev, { role:'ai', content: data.response, time: fmt(Date.now()) }]);
-    } catch {
-      setMessages(prev => [...prev, { role:'ai', content:'⚠ Could not connect to the AI service. Ensure the Python service is running on port 8000.', time: fmt(Date.now()) }]);
+    } catch (err) {
+      setMessages(prev => [...prev, { role:'ai', content: err.message || '⚠ Could not connect to the Backend AI Gateway.', time: fmt(Date.now()) }]);
     } finally {
       setIsLoading(false);
     }
